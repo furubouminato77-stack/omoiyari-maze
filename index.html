@@ -1,0 +1,608 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}img{max-width:100%}[hidden]{display:none!important}</style>
+</head>
+<body>
+<title>おもいやりメイズ</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@500;700;900&family=Nunito:wght@600;800&display=swap">
+<style>
+/* Layout: one-screen app. Slim HUD on top, a square board that fills the middle, a message bar below. */
+:root{
+  --bg:#EEF1F4; --panel:#FFFFFF; --fg:#1E2733; --muted:#5B6878; --line:#D6DCE3;
+  --board:#F7F8FA; --hole:#1E2733; --ball-hi:#FFFFFF;
+  --red:#E5484D; --blue:#3B7DE0; --yellow:#E0A000; --green:#2FA06B;
+  --shadow:0 10px 30px rgba(30,39,51,.12);
+  --font-disp:"Zen Maru Gothic","Hiragino Maru Gothic ProN","BIZ UDPGothic","Yu Gothic",sans-serif;
+  --font-num:"Nunito","Zen Maru Gothic",system-ui,sans-serif;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#12171E; --panel:#1B222B; --fg:#ECF0F4; --muted:#98A4B3; --line:#2C3641;
+    --board:#1F2730; --hole:#070A0E; --ball-hi:#FFFFFF;
+    --red:#F0646A; --blue:#5B97F0; --yellow:#F2B21C; --green:#45B883;
+    --shadow:0 10px 30px rgba(0,0,0,.4); color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#12171E; --panel:#1B222B; --fg:#ECF0F4; --muted:#98A4B3; --line:#2C3641;
+  --board:#1F2730; --hole:#070A0E; --ball-hi:#FFFFFF;
+  --red:#F0646A; --blue:#5B97F0; --yellow:#F2B21C; --green:#45B883;
+  --shadow:0 10px 30px rgba(0,0,0,.4); color-scheme:dark;
+}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--font-disp);font-size:15px;line-height:1.6;overflow:hidden;-webkit-text-size-adjust:100%}
+*{box-sizing:border-box}
+button{font:inherit;color:inherit;cursor:pointer}
+button:focus-visible,a:focus-visible{outline:3px solid var(--blue);outline-offset:2px}
+.app{height:100%;display:flex;flex-direction:column;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:10px}
+.screen{flex:1;min-height:0;display:flex;flex-direction:column}
+h1,h2,h3{margin:0;text-wrap:balance;font-weight:900;line-height:1.25}
+p{margin:0}
+
+/* ---- buttons ---- */
+.btn{border:0;border-radius:999px;padding:12px 26px;font-weight:700;font-size:16px;background:var(--panel);color:var(--fg);box-shadow:0 2px 0 var(--line);transition:transform .12s}
+.btn:active{transform:translateY(1px)}
+.btn.primary{background:var(--fg);color:var(--bg);box-shadow:none}
+.btn.small{padding:7px 14px;font-size:13px}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.center{justify-content:center}
+
+/* ---- title screen ---- */
+#screen-title{align-items:center;justify-content:center;text-align:center;gap:22px;overflow:auto}
+.logo{display:grid;grid-template-columns:1fr 1fr;gap:6px;width:92px;aspect-ratio:1;max-width:100%;padding:8px;border-radius:24px;background:var(--panel);box-shadow:var(--shadow);position:relative}
+.logo span{border-radius:10px;position:relative}
+.logo span::after{content:"";position:absolute;width:12px;height:12px;border-radius:50%;background:var(--ball-hi);box-shadow:inset -3px -3px 0 rgba(0,0,0,.18)}
+.logo span:nth-child(1){background:var(--red)}  .logo span:nth-child(1)::after{right:3px;bottom:3px}
+.logo span:nth-child(2){background:var(--blue)} .logo span:nth-child(2)::after{left:3px;bottom:3px}
+.logo span:nth-child(3){background:var(--yellow)} .logo span:nth-child(3)::after{right:3px;top:3px}
+.logo span:nth-child(4){background:var(--green)} .logo span:nth-child(4)::after{left:3px;top:3px}
+.title-main{font-size:clamp(34px,7vw,52px);letter-spacing:.02em}
+.title-sub{color:var(--muted);font-size:15px;max-width:34em}
+.eyebrow{font-size:12px;letter-spacing:.14em;color:var(--muted);font-weight:700}
+.seat-legend{display:flex;gap:14px;flex-wrap:wrap;justify-content:center;font-size:13px;color:var(--muted)}
+.seat-legend b{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px;vertical-align:middle}
+.note{font-size:12px;color:var(--muted);max-width:40em}
+
+/* ---- how to play ---- */
+#screen-howto{overflow:auto;gap:18px;align-items:center;padding-block:8px}
+.howto-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px;width:100%;max-width:860px}
+.howto-card{background:var(--panel);border-radius:18px;padding:18px;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:8px;min-width:0}
+.howto-card .step{font-family:var(--font-num);font-weight:800;font-size:13px;letter-spacing:.1em;color:var(--muted)}
+.howto-card h3{font-size:18px}
+.howto-card p{color:var(--muted);font-size:14px}
+.howto-card .kw{color:var(--fg);font-weight:700}
+
+/* ---- game ---- */
+.hud{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding-bottom:8px}
+.hud .brand{font-weight:900;font-size:16px;white-space:nowrap}
+.hud .spacer{flex:1}
+.timer{font-family:var(--font-num);font-variant-numeric:tabular-nums;font-weight:800;font-size:22px;min-width:5.2em;text-align:right}
+.meter{display:flex;align-items:center;gap:8px;min-width:150px}
+.meter .lbl{font-size:12px;font-weight:700;color:var(--muted);white-space:nowrap}
+.meter .bar{flex:1;height:10px;border-radius:999px;background:var(--line);overflow:hidden;min-width:80px}
+.meter .fill{height:100%;width:70%;border-radius:999px;background:linear-gradient(90deg,var(--yellow),var(--green));transition:width .25s linear}
+.balls{display:flex;gap:6px;flex-wrap:wrap}
+.ballchip{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;padding:4px 10px 4px 6px;border-radius:999px;background:var(--panel);color:var(--muted);box-shadow:0 1px 0 var(--line);white-space:nowrap}
+.ballchip i{width:12px;height:12px;border-radius:50%;background:var(--zc);box-shadow:inset -2px -2px 0 rgba(0,0,0,.2)}
+.ballchip.in{background:var(--zc);color:#fff;box-shadow:none}
+.ballchip.in i{background:#fff;box-shadow:none}
+.chip{font-size:12px;font-weight:700;padding:4px 10px;border-radius:999px;background:var(--panel);color:var(--muted);box-shadow:0 1px 0 var(--line);white-space:nowrap}
+.boardwrap{flex:1;min-height:0;position:relative;display:flex;align-items:center;justify-content:center}
+canvas#board{display:block;border-radius:22px;box-shadow:var(--shadow);touch-action:none;max-width:100%}
+.banner{position:absolute;left:50%;top:14px;transform:translate(-50%,-6px);opacity:0;pointer-events:none;background:var(--zone,var(--fg));color:#fff;padding:9px 16px;border-radius:999px;font-weight:700;font-size:14px;box-shadow:var(--shadow);transition:opacity .25s,transform .25s;max-width:calc(100% - 32px);text-align:center}
+.banner.on{opacity:1;transform:translate(-50%,0)}
+.msgbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding-top:10px}
+.msgbar .msg{flex:1;min-width:12em;font-size:14px;color:var(--muted)}
+.msgbar .msg b{color:var(--fg)}
+.overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:16px;background:color-mix(in srgb,var(--bg) 70%,transparent);backdrop-filter:blur(4px);border-radius:22px}
+.card{background:var(--panel);border-radius:22px;padding:24px;box-shadow:var(--shadow);width:min(100%,440px);display:flex;flex-direction:column;gap:14px;text-align:center;max-height:100%;overflow:auto}
+.card h2{font-size:28px}
+.card .big{font-family:var(--font-num);font-size:36px;font-weight:800;font-variant-numeric:tabular-nums}
+.card .rating{font-weight:700;font-size:18px}
+.card .thanks{color:var(--muted);font-size:14px}
+.order{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;text-align:left}
+.order div{font-size:11px;color:var(--muted);min-width:0}
+.order b{display:block;color:var(--fg);font-size:13px}
+.order .bar{height:8px;border-radius:999px;background:var(--line);overflow:hidden;margin-top:4px}
+.order .bar i{display:block;height:100%;border-radius:999px;background:var(--zc)}
+.mock{position:fixed;right:max(16px,env(safe-area-inset-right,0px));bottom:max(10px,env(safe-area-inset-bottom,0px));font-family:var(--font-num);font-size:11px;font-weight:800;letter-spacing:.08em;color:var(--muted);opacity:.75;pointer-events:none}
+@media (prefers-reduced-motion: reduce){.banner,.btn,.meter .fill{transition:none}}
+@media (max-width:480px){.hud .brand{display:none}.timer{font-size:18px}.meter{min-width:120px}}
+</style>
+
+<div class="app">
+
+  <!-- ===== タイトル ===== -->
+  <section id="screen-title" class="screen">
+    <div class="logo" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
+    <div>
+      <p class="eyebrow">4人で1台のタブレット・4つのボール・4つの出口</p>
+      <h1 class="title-main">おもいやりメイズ</h1>
+    </div>
+    <p class="title-sub">タブレットの角を4人で持ち、4色のボールを同じ傾きで転がします。出口は四すみに4つ、自分の色の出口へ。自分のボールだけ見ていると、だれかのボールが壁にぶつかる。</p>
+    <div class="seat-legend">
+      <span><b style="background:var(--red)"></b>あか：左上の席・左上の出口</span>
+      <span><b style="background:var(--blue)"></b>あお：右上の席・右上の出口</span>
+      <span><b style="background:var(--yellow)"></b>きいろ：左下の席・左下の出口</span>
+      <span><b style="background:var(--green)"></b>みどり：右下の席・右下の出口</span>
+    </div>
+    <div class="row center">
+      <button class="btn primary" id="btn-start">はじめる</button>
+      <button class="btn" id="btn-howto">あそびかた</button>
+    </div>
+    <p class="note">タブレットで開くとジャイロ（傾き）で操作できます。このプレビューでは、盤面を指でドラッグするか矢印キーで傾きを再現します。</p>
+  </section>
+
+  <!-- ===== あそびかた ===== -->
+  <section id="screen-howto" class="screen" hidden>
+    <h2>あそびかた</h2>
+    <div class="howto-grid">
+      <article class="howto-card">
+        <span class="step">STEP 1</span>
+        <h3>4つの角を、4人で持つ</h3>
+        <p>画面は赤・青・黄・緑の4つのエリアに分かれています。<span class="kw">自分の色の角</span>を持って座ります。</p>
+      </article>
+      <article class="howto-card">
+        <span class="step">STEP 2</span>
+        <h3>4つのボールは、同じ向きに転がる</h3>
+        <p>まん中から4色のボールが出発。傾けると<span class="kw">4つ全部が同じ方向へ</span>動きます。自分のボールだけ見ないで、みんなのボールを見ましょう。</p>
+      </article>
+      <article class="howto-card">
+        <span class="step">STEP 3</span>
+        <h3>おもいやりゲージ</h3>
+        <p>急に傾けたり、だれかのボールを壁に強くぶつけたりすると<span class="kw">ゲージが下がります</span>。声をかけ合って、ゆっくり動かすと上がります。</p>
+      </article>
+      <article class="howto-card">
+        <span class="step">STEP 4</span>
+        <h3>4つの出口、全員が入ったらクリア</h3>
+        <p>四すみに自分の色の出口があります。先に入った人は<span class="kw">残りの人の応援役</span>。全員が入ったら、「ありがとう」を言って終わりです。</p>
+      </article>
+    </div>
+    <div class="row center">
+      <button class="btn primary" id="btn-start2">はじめる</button>
+      <button class="btn" id="btn-back">もどる</button>
+    </div>
+  </section>
+
+  <!-- ===== ゲーム ===== -->
+  <section id="screen-game" class="screen" hidden>
+    <header class="hud">
+      <span class="brand">おもいやりメイズ</span>
+      <div class="balls" id="ballchips" aria-label="ボールの状況"></div>
+      <span class="spacer"></span>
+      <div class="meter" aria-label="おもいやりゲージ">
+        <span class="lbl">おもいやり</span>
+        <div class="bar"><div class="fill" id="meter-fill"></div></div>
+      </div>
+      <span class="timer" id="timer">0:00.0</span>
+    </header>
+
+    <div class="boardwrap" id="boardwrap">
+      <canvas id="board" width="300" height="300" aria-label="迷路の盤面"></canvas>
+      <div class="banner" id="banner"></div>
+      <div class="overlay" id="clear" hidden>
+        <div class="card">
+          <p class="eyebrow">全員ゴール！</p>
+          <h2>4人の力でクリア</h2>
+          <div class="big" id="clear-time">0:00.0</div>
+          <p class="rating" id="clear-rating">息ぴったり</p>
+          <div class="order" id="order"></div>
+          <p class="thanks" id="clear-thanks">となりの人に「ありがとう」を伝えよう。</p>
+          <div class="row center">
+            <button class="btn primary" id="btn-again">もう一回</button>
+            <button class="btn" id="btn-title">タイトルへ</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <footer class="msgbar">
+      <p class="msg" id="msg">4つのボールは<b>同じ向き</b>に転がる。みんなのボールを見ながら、そっと傾けよう。</p>
+      <span class="chip" id="mode-chip">操作：ドラッグ / 矢印キー</span>
+      <button class="btn small" id="btn-gyro">ジャイロを使う</button>
+      <button class="btn small" id="btn-level">水平リセット</button>
+      <button class="btn small" id="btn-retry">やりなおす</button>
+    </footer>
+  </section>
+</div>
+<div class="mock">MOCKUP v0.2</div>
+
+<script>
+(function(){
+  'use strict';
+  const $ = s => document.querySelector(s);
+  const clamp = (v,a,b) => v<a?a:v>b?b:v;
+
+  // ---------- zones / players ----------
+  const ZONES = [
+    {key:'red',    name:'あか',   cssVar:'--red'},
+    {key:'blue',   name:'あお',   cssVar:'--blue'},
+    {key:'yellow', name:'きいろ', cssVar:'--yellow'},
+    {key:'green',  name:'みどり', cssVar:'--green'},
+  ];
+  const zoneOf = (x,y) => (x<0.5 ? 0 : 1) + (y<0.5 ? 0 : 2);   // 0 TL,1 TR,2 BL,3 BR
+
+  let colors = {};
+  function readColors(){
+    const cs = getComputedStyle(document.documentElement);
+    const g = n => cs.getPropertyValue(n).trim();
+    colors = {board:g('--board'), hole:g('--hole'), ballHi:g('--ball-hi'),
+      fg:g('--fg'), muted:g('--muted'), line:g('--line'),
+      zone:ZONES.map(z=>g(z.cssVar))};
+  }
+  readColors();
+  try{ matchMedia('(prefers-color-scheme: dark)').addEventListener('change', readColors); }catch(e){}
+  new MutationObserver(readColors).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
+
+  // ---------- screens ----------
+  const screens = {title:$('#screen-title'), howto:$('#screen-howto'), game:$('#screen-game')};
+  function show(name){
+    for(const k in screens) screens[k].hidden = (k!==name);
+    if(name==='game') startGame();
+  }
+  $('#btn-start').onclick = ()=>show('game');
+  $('#btn-start2').onclick = ()=>show('game');
+  $('#btn-howto').onclick = ()=>show('howto');
+  $('#btn-back').onclick = ()=>show('title');
+  $('#btn-again').onclick = ()=>startGame();
+  $('#btn-title').onclick = ()=>{ running=false; show('title'); };
+  $('#btn-retry').onclick = ()=>startGame();
+
+  // ---------- maze ----------
+  const N = 11;                       // cells per side (odd, so there is a centre cell)
+  const CS = 1/N;                     // cell size in board units (board = 1 x 1)
+  const WT = CS*0.13;                 // wall thickness
+  const R  = CS*0.26;                 // ball radius
+  const HOLE_R = CS*0.36;
+  const C = (N-1)/2;                  // centre cell index
+
+  function rnd(n){ return Math.floor(Math.random()*n); }
+
+  function genMaze(){
+    // hw[r][c]: wall under cell (r,c); vw[r][c]: wall right of cell (r,c)
+    const hw = Array.from({length:N-1},()=>Array(N).fill(true));
+    const vw = Array.from({length:N},()=>Array(N-1).fill(true));
+    const seen = Array.from({length:N},()=>Array(N).fill(false));
+    const stack=[[C,C]]; seen[C][C]=true;
+    while(stack.length){
+      const [r,c] = stack[stack.length-1];
+      const opts=[];
+      if(r>0 && !seen[r-1][c]) opts.push([r-1,c]);
+      if(r<N-1 && !seen[r+1][c]) opts.push([r+1,c]);
+      if(c>0 && !seen[r][c-1]) opts.push([r,c-1]);
+      if(c<N-1 && !seen[r][c+1]) opts.push([r,c+1]);
+      if(!opts.length){ stack.pop(); continue; }
+      const [nr,nc] = opts[rnd(opts.length)];
+      if(nr!==r) hw[Math.min(r,nr)][c]=false; else vw[r][Math.min(c,nc)]=false;
+      seen[nr][nc]=true; stack.push([nr,nc]);
+    }
+    // open the 3x3 centre into a plaza where the four balls start
+    for(let r=C-1;r<=C+1;r++) for(let c=C-1;c<=C+1;c++){
+      if(r<C+1) hw[r][c]=false;
+      if(c<C+1) vw[r][c]=false;
+    }
+    // extra openings so there are loops and fewer dead ends
+    for(let i=0;i<14;i++){
+      if(Math.random()<0.5) hw[rnd(N-1)][rnd(N)]=false; else vw[rnd(N)][rnd(N-1)]=false;
+    }
+    const walls=[];
+    const add=(x,y,w,h)=>walls.push({x,y,w,h,zone:zoneOf(x+w/2,y+h/2)});
+    add(-WT/2,-WT/2,1+WT,WT); add(-WT/2,1-WT/2,1+WT,WT); add(-WT/2,-WT/2,WT,1+WT); add(1-WT/2,-WT/2,WT,1+WT);
+    for(let r=0;r<N-1;r++) for(let c=0;c<N;c++) if(hw[r][c]) add(c*CS-WT/2,(r+1)*CS-WT/2,CS+WT,WT);
+    for(let r=0;r<N;r++) for(let c=0;c<N-1;c++) if(vw[r][c]) add((c+1)*CS-WT/2,r*CS-WT/2,WT,CS+WT);
+    // four exits: one hole in each corner cell, coloured by zone
+    const cc = i => (i+0.5)*CS;
+    const goals = [
+      {x:cc(0),   y:cc(0),   zone:0},
+      {x:cc(N-1), y:cc(0),   zone:1},
+      {x:cc(0),   y:cc(N-1), zone:2},
+      {x:cc(N-1), y:cc(N-1), zone:3},
+    ];
+    // four balls start around the centre, each on its own side
+    const starts = [
+      {x:cc(C-1), y:cc(C-1)}, {x:cc(C+1), y:cc(C-1)},
+      {x:cc(C-1), y:cc(C+1)}, {x:cc(C+1), y:cc(C+1)},
+    ];
+    return {walls, goals, starts};
+  }
+
+  // ---------- state ----------
+  const canvas = $('#board'), ctx = canvas.getContext('2d'), wrap = $('#boardwrap');
+  let S = 300, dpr = 1;
+  let maze, balls=[], tilt={x:0,y:0}, target={x:0,y:0}, meter=70, t0=0, elapsed=0;
+  let running=false, phase='play', bannerTimer=null, prevTilt={x:0,y:0}, finishOrder=[], clearAt=0;
+  let mode='touch', gyroSeen=false, calib=null, keys={};
+  const G=1.9, MAXV=1.3, DAMP=0.7, REST=0.35;
+
+  function startGame(){
+    maze = genMaze();
+    balls = maze.starts.map((s,i)=>({x:s.x, y:s.y, vx:0, vy:0, zone:i, state:'roll', fallT:0, inAt:0}));
+    tilt={x:0,y:0}; target={x:0,y:0}; prevTilt={x:0,y:0}; keys={};
+    meter=70; elapsed=0; t0=performance.now(); phase='play'; finishOrder=[];
+    $('#clear').hidden = true;
+    renderChips();
+    setMsg('4つのボールは<b>同じ向き</b>に転がる。みんなのボールを見ながら、そっと傾けよう。');
+    showBanner(null, 'まん中から出発。四すみの自分の色の出口へ');
+    resize();
+    if(!running){ running=true; last=performance.now(); requestAnimationFrame(loop); }
+  }
+
+  function renderChips(){
+    $('#ballchips').innerHTML = balls.map(b=>
+      '<span class="ballchip'+(b.state==='in'?' in':'')+'" style="--zc:'+colors.zone[b.zone]+'"><i></i>'+ZONES[b.zone].name+(b.state==='in'?' ゴール':'')+'</span>').join('');
+  }
+  function setMsg(html){ $('#msg').innerHTML = html; }
+  function showBanner(z, text){
+    const b=$('#banner');
+    b.textContent=text; b.style.setProperty('--zone', z==null ? colors.fg : colors.zone[z]);
+    b.classList.add('on');
+    clearTimeout(bannerTimer); bannerTimer=setTimeout(()=>b.classList.remove('on'), 2600);
+  }
+
+  // ---------- sizing ----------
+  function resize(){
+    const w = wrap.clientWidth, h = wrap.clientHeight;
+    const s = Math.max(120, Math.floor(Math.min(w,h)));
+    dpr = Math.min(2, window.devicePixelRatio||1);
+    if(s!==S || canvas.width!==Math.round(s*dpr)){
+      S=s; canvas.width=Math.round(s*dpr); canvas.height=Math.round(s*dpr);
+      canvas.style.width=s+'px'; canvas.style.height=s+'px';
+    }
+  }
+  new ResizeObserver(resize).observe(wrap);
+
+  // ---------- input: pointer drag ----------
+  let drag=null;
+  canvas.addEventListener('pointerdown', e=>{
+    if(mode==='gyro') return;
+    canvas.setPointerCapture(e.pointerId);
+    drag={id:e.pointerId, x:e.clientX, y:e.clientY};
+  });
+  canvas.addEventListener('pointermove', e=>{
+    if(!drag || e.pointerId!==drag.id) return;
+    const k = S*0.22;
+    target.x = clamp((e.clientX-drag.x)/k,-1,1);
+    target.y = clamp((e.clientY-drag.y)/k,-1,1);
+  });
+  const endDrag = e=>{ if(drag && e.pointerId===drag.id){ drag=null; target.x=0; target.y=0; } };
+  canvas.addEventListener('pointerup', endDrag);
+  canvas.addEventListener('pointercancel', endDrag);
+
+  // ---------- input: keyboard ----------
+  window.addEventListener('keydown', e=>{
+    if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','a','d','w','s'].includes(e.key)){ keys[e.key]=true; e.preventDefault(); }
+  });
+  window.addEventListener('keyup', e=>{ keys[e.key]=false; });
+  function keyTilt(){
+    let x=0,y=0;
+    if(keys.ArrowLeft||keys.a) x-=1; if(keys.ArrowRight||keys.d) x+=1;
+    if(keys.ArrowUp||keys.w) y-=1;   if(keys.ArrowDown||keys.s) y+=1;
+    return (x||y) ? {x,y} : null;
+  }
+
+  // ---------- input: gyro (works on a real tablet; this preview frame may refuse it) ----------
+  const MAXDEG = 22;
+  function onOri(e){
+    if(e.beta==null || e.gamma==null) return;
+    if(!gyroSeen){ gyroSeen=true; mode='gyro'; $('#mode-chip').textContent='操作：ジャイロ（傾き）'; }
+    let a = (screen.orientation && typeof screen.orientation.angle==='number') ? screen.orientation.angle : (window.orientation||0);
+    a = ((a%360)+360)%360;
+    const b=e.beta, g=e.gamma; let gx,gy;
+    if(a===90){ gx=b; gy=-g; } else if(a===270){ gx=-b; gy=g; } else if(a===180){ gx=-g; gy=-b; } else { gx=g; gy=b; }
+    if(!calib) calib={x:gx,y:gy};
+    target.x = clamp((gx-calib.x)/MAXDEG,-1,1);
+    target.y = clamp((gy-calib.y)/MAXDEG,-1,1);
+  }
+  $('#btn-gyro').onclick = async ()=>{
+    const btn=$('#btn-gyro');
+    try{
+      if(typeof DeviceOrientationEvent!=='undefined' && typeof DeviceOrientationEvent.requestPermission==='function'){
+        const res = await DeviceOrientationEvent.requestPermission();
+        if(res!=='granted') throw new Error('denied');
+      }
+      window.addEventListener('deviceorientation', onOri);
+      btn.textContent='接続中…'; btn.disabled=true;
+      setTimeout(()=>{
+        if(gyroSeen){ btn.hidden=true; setMsg('タブレットを<b>4人で</b>持って、水平から少しだけ傾けよう。'); }
+        else { btn.disabled=false; btn.textContent='ジャイロを使う'; setMsg('この環境ではジャイロが使えないので、<b>盤面をドラッグ</b>して傾けます。実機のタブレットでは傾きで動きます。'); }
+      }, 1800);
+    }catch(err){
+      setMsg('ジャイロの許可が得られませんでした。<b>盤面をドラッグ</b>して傾けます。');
+    }
+  };
+  $('#btn-level').onclick = ()=>{ calib=null; target.x=0; target.y=0; setMsg('いまの持ち方を<b>水平</b>として覚えました。'); };
+
+  // ---------- loop ----------
+  let last=0;
+  function loop(now){
+    if(!running) return;
+    const dt = Math.min(0.033, (now-last)/1000 || 0.016); last=now;
+    if(phase==='play') step(dt, now);
+    else if(phase==='fall'){ for(const b of balls) if(b.state==='fall') b.fallT+=dt; if(now-clearAt>700){ phase='done'; showClear(); } }
+    draw();
+    requestAnimationFrame(loop);
+  }
+
+  function step(dt, now){
+    elapsed = (now-t0)/1000;
+    const kt = keyTilt();
+    const tgt = kt || target;
+    const k = 1-Math.pow(0.002,dt);
+    tilt.x += (tgt.x-tilt.x)*k; tilt.y += (tgt.y-tilt.y)*k;
+
+    // おもいやりゲージ: smooth tilting raises it, jerky tilting lowers it
+    const jerk = Math.hypot(tilt.x-prevTilt.x, tilt.y-prevTilt.y)/dt;
+    prevTilt.x=tilt.x; prevTilt.y=tilt.y;
+    if(jerk>4) meter -= (jerk-4)*5*dt; else meter += 4*dt;
+
+    const sub=4, h=dt/sub;
+    for(let i=0;i<sub;i++){
+      for(const b of balls){
+        if(b.state!=='roll') continue;
+        b.vx += tilt.x*G*h; b.vy += tilt.y*G*h;
+        const d = Math.max(0,1-DAMP*h); b.vx*=d; b.vy*=d;
+        const sp = Math.hypot(b.vx,b.vy);
+        if(sp>MAXV){ b.vx*=MAXV/sp; b.vy*=MAXV/sp; }
+        // pull toward its own hole when the ball is over the rim
+        const g=maze.goals[b.zone];
+        const gx=g.x-b.x, gy=g.y-b.y, gd=Math.hypot(gx,gy);
+        if(gd<HOLE_R+R*0.3 && gd>1e-6){ b.vx += gx/gd*2.2*h; b.vy += gy/gd*2.2*h; }
+        b.x += b.vx*h; b.y += b.vy*h;
+        collideWalls(b);
+      }
+      collideBalls();
+    }
+    // goals
+    for(const b of balls){
+      if(b.state!=='roll') continue;
+      const g=maze.goals[b.zone];
+      if(Math.hypot(g.x-b.x, g.y-b.y) < HOLE_R*0.55){
+        b.state='fall'; b.fallT=0; b.vx=0; b.vy=0; b.inAt=elapsed;
+        finishOrder.push(b.zone);
+        setTimeout(()=>{ if(b.state==='fall') b.state='in'; renderChips(); }, 500);
+        const zn=ZONES[b.zone].name, left=balls.filter(x=>x.state==='roll').length;
+        if(left>0){
+          showBanner(b.zone, zn+'さんゴール！ ここからは応援役。残り'+left+'人のために声をかけよう');
+          setMsg('<b>'+zn+'さん</b>は先にゴール。残りの人のボールが見やすいように、<b>傾ける向きを声に出そう</b>。');
+        }
+      }
+    }
+    if(balls.every(b=>b.state!=='roll')){ phase='fall'; clearAt=now; }
+
+    meter = clamp(meter,0,100);
+    $('#meter-fill').style.width = meter.toFixed(0)+'%';
+    $('#timer').textContent = fmt(elapsed);
+  }
+
+  function collideWalls(b){
+    for(const w of maze.walls){
+      const cx = clamp(b.x, w.x, w.x+w.w), cy = clamp(b.y, w.y, w.y+w.h);
+      let dx=b.x-cx, dy=b.y-cy; const d2=dx*dx+dy*dy;
+      if(d2 >= R*R) continue;
+      let d=Math.sqrt(d2);
+      if(d<1e-7){
+        const l=b.x-w.x, r=w.x+w.w-b.x, t=b.y-w.y, bt=w.y+w.h-b.y, m=Math.min(l,r,t,bt);
+        if(m===l){dx=-1;dy=0;} else if(m===r){dx=1;dy=0;} else if(m===t){dx=0;dy=-1;} else {dx=0;dy=1;}
+        d=0;
+      } else { dx/=d; dy/=d; }
+      const pen=R-d; b.x+=dx*pen; b.y+=dy*pen;
+      const vn=b.vx*dx+b.vy*dy;
+      if(vn<0){
+        b.vx -= (1+REST)*vn*dx; b.vy -= (1+REST)*vn*dy;
+        if(-vn>0.55) meter -= 6;          // a hard hit on the wall costs kindness
+      }
+    }
+  }
+
+  function collideBalls(){
+    for(let i=0;i<balls.length;i++) for(let j=i+1;j<balls.length;j++){
+      const a=balls[i], b=balls[j];
+      if(a.state!=='roll' || b.state!=='roll') continue;
+      let dx=b.x-a.x, dy=b.y-a.y; const d=Math.hypot(dx,dy), min=R*2;
+      if(d>=min || d<1e-7) continue;
+      dx/=d; dy/=d;
+      const pen=(min-d)/2;
+      a.x-=dx*pen; a.y-=dy*pen; b.x+=dx*pen; b.y+=dy*pen;
+      const rv=(b.vx-a.vx)*dx+(b.vy-a.vy)*dy;
+      if(rv<0){
+        const jimp=-(1+0.5)*rv/2;
+        a.vx-=jimp*dx; a.vy-=jimp*dy; b.vx+=jimp*dx; b.vy+=jimp*dy;
+      }
+    }
+  }
+
+  function fmt(s){ const m=Math.floor(s/60), r=s-m*60; return m+':'+(r<10?'0':'')+r.toFixed(1); }
+
+  function showClear(){
+    $('#clear-time').textContent = fmt(elapsed);
+    let rating, thanks;
+    if(meter>=80){ rating='息ぴったり ♥♥♥'; thanks='4人の傾きがそろっていました。となりの人に「ありがとう」を伝えよう。'; }
+    else if(meter>=50){ rating='いいかんじ ♥♥'; thanks='ときどき急いだけれど、ちゃんとゆずり合えました。次はもっとゆっくり。'; }
+    else { rating='もう一度ゆっくり ♥'; thanks='壁にたくさんぶつかりました。だれのボールを先に送るか、相談してみよう。'; }
+    $('#clear-rating').textContent = rating;
+    $('#clear-thanks').textContent = thanks;
+    const total = elapsed||1;
+    $('#order').innerHTML = finishOrder.map((z,i)=>{
+      const b=balls.find(x=>x.zone===z);
+      return '<div style="--zc:'+colors.zone[z]+'"><b>'+(i+1)+'番目 '+ZONES[z].name+'</b>'+fmt(b.inAt)+'<div class="bar"><i style="width:'+Math.round(b.inAt/total*100)+'%"></i></div></div>';
+    }).join('');
+    $('#clear').hidden=false;
+  }
+
+  // ---------- drawing ----------
+  function rr(x,y,w,h,r){ ctx.beginPath(); ctx.roundRect ? ctx.roundRect(x,y,w,h,r) : ctx.rect(x,y,w,h); }
+  function draw(){
+    if(!maze) return;
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    ctx.clearRect(0,0,S,S);
+    ctx.fillStyle=colors.board; ctx.fillRect(0,0,S,S);
+    // quadrant tints
+    for(let i=0;i<4;i++){
+      ctx.globalAlpha=0.08; ctx.fillStyle=colors.zone[i];
+      ctx.fillRect((i%2)*S/2, (i>>1)*S/2, S/2, S/2);
+    }
+    ctx.globalAlpha=1;
+    const fam = getComputedStyle(document.body).fontFamily;
+    // holes (exits), one per corner, ringed in the owner's colour
+    for(const g of maze.goals){
+      const hx=g.x*S, hy=g.y*S, hr=HOLE_R*S, col=colors.zone[g.zone];
+      const glow=ctx.createRadialGradient(hx,hy,hr*0.8,hx,hy,hr*2.4);
+      glow.addColorStop(0,'rgba(255,255,255,0.28)'); glow.addColorStop(1,'rgba(255,255,255,0)');
+      ctx.fillStyle=glow; ctx.beginPath(); ctx.arc(hx,hy,hr*2.4,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle=colors.hole; ctx.beginPath(); ctx.arc(hx,hy,hr,0,Math.PI*2); ctx.fill();
+      ctx.strokeStyle=col; ctx.lineWidth=S*0.008; ctx.beginPath(); ctx.arc(hx,hy,hr*0.8,0,Math.PI*2); ctx.stroke();
+      // label beside the exit, toward the inside of the board
+      const top = g.zone<2, leftSide = g.zone%2===0;
+      ctx.font='900 '+Math.round(S*0.03)+'px '+fam; ctx.textBaseline='middle'; ctx.textAlign= leftSide?'left':'right';
+      ctx.globalAlpha=0.8; ctx.fillStyle=col;
+      ctx.fillText(ZONES[g.zone].name+'の出口', leftSide? hx+hr+S*0.02 : hx-hr-S*0.02, top? hy : hy);
+      ctx.globalAlpha=1;
+    }
+    // seat labels, faint, a little inside each corner along the side edge
+    ctx.font='700 '+Math.round(S*0.028)+'px '+fam; ctx.textBaseline='middle';
+    const seatPos=[[S*0.045,S*0.13,'left'],[S-S*0.045,S*0.13,'right'],[S*0.045,S-S*0.13,'left'],[S-S*0.045,S-S*0.13,'right']];
+    for(let i=0;i<4;i++){
+      ctx.globalAlpha=0.45; ctx.fillStyle=colors.zone[i]; ctx.textAlign=seatPos[i][2];
+      ctx.fillText(ZONES[i].name+'の席', seatPos[i][0], seatPos[i][1]);
+    }
+    ctx.globalAlpha=1;
+    // walls
+    for(const w of maze.walls){
+      ctx.fillStyle=colors.zone[w.zone];
+      rr(w.x*S, w.y*S, w.w*S, w.h*S, WT*S/2); ctx.fill();
+    }
+    // start plaza marker
+    ctx.globalAlpha=0.35; ctx.strokeStyle=colors.muted; ctx.lineWidth=1; ctx.setLineDash([4,4]);
+    ctx.beginPath(); ctx.arc(S/2,S/2,CS*S*1.1,0,Math.PI*2); ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha=1;
+    // balls
+    for(const b of balls){
+      if(b.state==='in') continue;
+      const g=maze.goals[b.zone];
+      let bx=b.x*S, by=b.y*S, br=R*S;
+      if(b.state==='fall'){ const k=clamp(1-b.fallT/0.5,0,1); br*=k; bx=g.x*S+(bx-g.x*S)*k; by=g.y*S+(by-g.y*S)*k; }
+      if(br<=0.5) continue;
+      ctx.fillStyle='rgba(0,0,0,0.22)'; ctx.beginPath(); ctx.arc(bx+tilt.x*S*0.012+S*0.004, by+tilt.y*S*0.012+S*0.006, br, 0, Math.PI*2); ctx.fill();
+      const grad=ctx.createRadialGradient(bx-br*0.35,by-br*0.35,br*0.05,bx,by,br);
+      grad.addColorStop(0,colors.ballHi); grad.addColorStop(0.25,colors.zone[b.zone]); grad.addColorStop(1,colors.zone[b.zone]);
+      ctx.fillStyle=grad; ctx.beginPath(); ctx.arc(bx,by,br,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle='rgba(0,0,0,0.18)'; ctx.beginPath(); ctx.arc(bx+br*0.25,by+br*0.3,br*0.55,0,Math.PI*2); ctx.fill();
+    }
+    // tilt indicator in the centre while playing
+    if(phase==='play'){
+      const cx=S/2, cy=S/2, rad=S*0.03;
+      ctx.globalAlpha=0.55;
+      ctx.strokeStyle=colors.muted; ctx.lineWidth=1; ctx.beginPath(); ctx.arc(cx,cy,rad,0,Math.PI*2); ctx.stroke();
+      ctx.fillStyle=colors.fg; ctx.beginPath(); ctx.arc(cx+tilt.x*rad, cy+tilt.y*rad, rad*0.3, 0, Math.PI*2); ctx.fill();
+      ctx.globalAlpha=1;
+    }
+  }
+})();
+</script>
+</body>
+</html>
