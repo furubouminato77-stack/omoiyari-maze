@@ -188,6 +188,18 @@ canvas#board{display:block;border-radius:22px;box-shadow:var(--shadow);touch-act
     <div class="boardwrap" id="boardwrap">
       <canvas id="board" width="300" height="300" aria-label="迷路の盤面"></canvas>
       <div class="banner" id="banner"></div>
+      <div class="overlay" id="calib" hidden>
+        <div class="card">
+          <p class="eyebrow">ジャイロの方向合わせ</p>
+          <h2 id="calib-title">iPadを平らに持ってください</h2>
+          <p class="thanks" id="calib-desc">テーブルに置くか、4人で水平に持ったまま「つぎへ」を押します。</p>
+          <p class="thanks" id="calib-err" style="color:var(--red)" hidden></p>
+          <div class="row center">
+            <button class="btn primary" id="calib-next">つぎへ</button>
+            <button class="btn" id="calib-skip">あとで</button>
+          </div>
+        </div>
+      </div>
       <div class="overlay" id="clear" hidden>
         <div class="card">
           <p class="eyebrow">全員ゴール！</p>
@@ -208,12 +220,13 @@ canvas#board{display:block;border-radius:22px;box-shadow:var(--shadow);touch-act
       <p class="msg" id="msg">4つのボールは<b>同じ向き</b>に転がる。みんなのボールを見ながら、そっと傾けよう。</p>
       <span class="chip" id="mode-chip">操作：ドラッグ / 矢印キー</span>
       <button class="btn small" id="btn-gyro">ジャイロを使う</button>
+      <button class="btn small" id="btn-calib" hidden>方向を合わせる</button>
       <button class="btn small" id="btn-level">水平リセット</button>
       <button class="btn small" id="btn-retry">やりなおす</button>
     </footer>
   </section>
 </div>
-<div class="mock">MOCKUP v0.3</div>
+<div class="mock">MOCKUP v0.4</div>
 
 <script>
 (function(){
@@ -392,17 +405,78 @@ canvas#board{display:block;border-radius:22px;box-shadow:var(--shadow);touch-act
 
   // ---------- input: gyro (works on a real tablet; this preview frame may refuse it) ----------
   const MAXDEG = 22;
+  // Raw beta/gamma → screen tilt. Browsers disagree on how beta/gamma relate to a rotated
+  // screen, so the mapping is learned on the device: "tilt right" and "tilt toward you" each
+  // pick a raw axis and a sign. Until that is done, a best-guess mapping from the screen angle is used.
+  let lastRaw=null;                      // {b,g} most recent reading
+  let axmap=null;                        // {axX,sgnX,axY,sgnY,offB,offG}
+  let calibrating=false, calibStep=0, calibOff=null, calibX=null;
+  try{ const s=localStorage.getItem('omoiyari-axmap'); if(s) axmap=JSON.parse(s); }catch(e){}
+  function saveMap(){ try{ localStorage.setItem('omoiyari-axmap', JSON.stringify(axmap)); }catch(e){} }
+
   function onOri(e){
     if(e.beta==null || e.gamma==null) return;
-    if(!gyroSeen){ gyroSeen=true; mode='gyro'; $('#mode-chip').textContent='操作：ジャイロ（傾き）'; }
-    let a = (screen.orientation && typeof screen.orientation.angle==='number') ? screen.orientation.angle : (window.orientation||0);
-    a = ((a%360)+360)%360;
-    const b=e.beta, g=e.gamma; let gx,gy;
-    if(a===90){ gx=b; gy=-g; } else if(a===270){ gx=-b; gy=g; } else if(a===180){ gx=-g; gy=-b; } else { gx=g; gy=b; }
-    if(!calib) calib={x:gx,y:gy};
-    target.x = clamp((gx-calib.x)/MAXDEG,-1,1);
-    target.y = clamp((gy-calib.y)/MAXDEG,-1,1);
+    const b=e.beta, g=e.gamma;
+    lastRaw={b,g};
+    if(!gyroSeen){
+      gyroSeen=true; mode='gyro';
+      $('#mode-chip').textContent='操作：ジャイロ（傾き）';
+      $('#btn-calib').hidden=false;
+      if(!axmap) openCalib();
+    }
+    if(calibrating){ target.x=0; target.y=0; return; }
+    let tx,ty;
+    if(axmap){
+      const rb=b-axmap.offB, rg=g-axmap.offG;
+      tx = axmap.sgnX*(axmap.axX==='b'?rb:rg);
+      ty = axmap.sgnY*(axmap.axY==='b'?rb:rg);
+    } else {
+      let a = (screen.orientation && typeof screen.orientation.angle==='number') ? screen.orientation.angle : (window.orientation||0);
+      a = ((a%360)+360)%360;
+      let gx,gy;
+      if(a===90){ gx=b; gy=-g; } else if(a===270){ gx=-b; gy=g; } else if(a===180){ gx=-g; gy=-b; } else { gx=g; gy=b; }
+      if(!calib) calib={x:gx,y:gy};
+      tx=gx-calib.x; ty=gy-calib.y;
+    }
+    target.x = clamp(tx/MAXDEG,-1,1);
+    target.y = clamp(ty/MAXDEG,-1,1);
   }
+
+  // ---- direction calibration (2 tilts) ----
+  const CAL_STEPS = [
+    {title:'iPadを平らに持ってください', desc:'テーブルに置くか、4人で水平に持ったまま「つぎへ」を押します。', btn:'つぎへ'},
+    {title:'画面の右はしを下げてください', desc:'ボールを画面の右へ転がしたい向きに、はっきり傾けたまま押します。', btn:'この向きが「右」'},
+    {title:'画面の下はし（自分の手前）を下げてください', desc:'ボールを画面の下へ転がしたい向きに、はっきり傾けたまま押します。', btn:'この向きが「下」'},
+  ];
+  function openCalib(){
+    calibrating=true; calibStep=0; calibOff=null; calibX=null;
+    renderCalib(); $('#calib').hidden=false;
+  }
+  function renderCalib(msg){
+    const s=CAL_STEPS[calibStep];
+    $('#calib-title').textContent=s.title; $('#calib-desc').textContent=s.desc; $('#calib-next').textContent=s.btn;
+    const err=$('#calib-err'); err.hidden=!msg; err.textContent=msg||'';
+  }
+  function closeCalib(){ calibrating=false; $('#calib').hidden=true; }
+  function dominant(off){
+    const db=lastRaw.b-off.b, dg=lastRaw.g-off.g;
+    if(Math.max(Math.abs(db),Math.abs(dg))<8) return null;      // less than 8° is not a clear tilt
+    return Math.abs(db)>=Math.abs(dg) ? {ax:'b', sgn:db>0?1:-1} : {ax:'g', sgn:dg>0?1:-1};
+  }
+  $('#calib-next').onclick = ()=>{
+    if(!lastRaw){ renderCalib('まだ傾きが届いていません。少し待ってからもう一度。'); return; }
+    if(calibStep===0){ calibOff={b:lastRaw.b,g:lastRaw.g}; calibStep=1; renderCalib(); return; }
+    const d=dominant(calibOff);
+    if(!d){ renderCalib('傾きが小さすぎます。もう少しはっきり傾けてから押してください。'); return; }
+    if(calibStep===1){ calibX=d; calibStep=2; renderCalib(); return; }
+    if(d.ax===calibX.ax){ calibStep=1; calibX=null; renderCalib('「右」と同じ向きになってしまいました。もう一度「右」からやり直します。'); return; }
+    axmap={axX:calibX.ax, sgnX:calibX.sgn, axY:d.ax, sgnY:d.sgn, offB:calibOff.b, offG:calibOff.g};
+    saveMap(); closeCalib();
+    setMsg('方向を合わせました。<b>傾けた向き</b>にボールが転がります。ずれたら「方向を合わせる」でやり直せます。');
+  };
+  $('#calib-skip').onclick = ()=>{ closeCalib(); setMsg('方向合わせをとばしました。向きが合わないときは「<b>方向を合わせる</b>」を押してください。'); };
+  $('#btn-calib').onclick = openCalib;
+
   $('#btn-gyro').onclick = async ()=>{
     const btn=$('#btn-gyro');
     try{
@@ -413,14 +487,18 @@ canvas#board{display:block;border-radius:22px;box-shadow:var(--shadow);touch-act
       window.addEventListener('deviceorientation', onOri);
       btn.textContent='接続中…'; btn.disabled=true;
       setTimeout(()=>{
-        if(gyroSeen){ btn.hidden=true; setMsg('タブレットを<b>4人で</b>持って、水平から少しだけ傾けよう。'); }
+        if(gyroSeen){ btn.hidden=true; if(!calibrating) setMsg('タブレットを<b>4人で</b>持って、水平から少しだけ傾けよう。'); }
         else { btn.disabled=false; btn.textContent='ジャイロを使う'; setMsg('この環境ではジャイロが使えないので、<b>盤面をドラッグ</b>して傾けます。実機のタブレットでは傾きで動きます。'); }
       }, 1800);
     }catch(err){
       setMsg('ジャイロの許可が得られませんでした。<b>盤面をドラッグ</b>して傾けます。');
     }
   };
-  $('#btn-level').onclick = ()=>{ calib=null; target.x=0; target.y=0; setMsg('いまの持ち方を<b>水平</b>として覚えました。'); };
+  $('#btn-level').onclick = ()=>{
+    if(axmap && lastRaw){ axmap.offB=lastRaw.b; axmap.offG=lastRaw.g; saveMap(); }
+    calib=null; target.x=0; target.y=0;
+    setMsg('いまの持ち方を<b>水平</b>として覚えました。');
+  };
 
   // ---------- loop ----------
   let last=0;
