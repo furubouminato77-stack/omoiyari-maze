@@ -15,8 +15,10 @@
 /* Layout: one-screen app. Slim HUD on top, a square board that fills the middle, a message bar below. */
 :root{
   --bg:#EEF1F4; --panel:#FFFFFF; --fg:#1E2733; --muted:#5B6878; --line:#D6DCE3;
-  --board:#F7F8FA; --hole:#1E2733; --ball-hi:#FFFFFF;
+  --board:#FFFFFF; --hole:#1E2733; --ball-hi:#FFFFFF;
   --red:#E5484D; --blue:#3B7DE0; --yellow:#E0A000; --green:#2FA06B;
+  /* wall colours: red-zone walls vanish under red light, green-zone walls under green light. The board stays white in both themes so the trick holds. */
+  --wall-red:#FFA883; --wall-blue:#3B7DE0; --wall-yellow:#E0A000; --wall-green:#9DFFEB;
   --shadow:0 10px 30px rgba(30,39,51,.12);
   --font-disp:"Zen Maru Gothic","Hiragino Maru Gothic ProN","BIZ UDPGothic","Yu Gothic",sans-serif;
   --font-num:"Nunito","Zen Maru Gothic",system-ui,sans-serif;
@@ -24,14 +26,14 @@
 @media (prefers-color-scheme: dark){
   :root:not([data-theme="light"]){
     --bg:#12171E; --panel:#1B222B; --fg:#ECF0F4; --muted:#98A4B3; --line:#2C3641;
-    --board:#1F2730; --hole:#070A0E; --ball-hi:#FFFFFF;
+    --board:#FFFFFF; --hole:#070A0E; --ball-hi:#FFFFFF;
     --red:#F0646A; --blue:#5B97F0; --yellow:#F2B21C; --green:#45B883;
     --shadow:0 10px 30px rgba(0,0,0,.4); color-scheme:dark;
   }
 }
 :root[data-theme="dark"]{
   --bg:#12171E; --panel:#1B222B; --fg:#ECF0F4; --muted:#98A4B3; --line:#2C3641;
-  --board:#1F2730; --hole:#070A0E; --ball-hi:#FFFFFF;
+  --board:#FFFFFF; --hole:#070A0E; --ball-hi:#FFFFFF;
   --red:#F0646A; --blue:#5B97F0; --yellow:#F2B21C; --green:#45B883;
   --shadow:0 10px 30px rgba(0,0,0,.4); color-scheme:dark;
 }
@@ -161,7 +163,7 @@ canvas#board{display:block;border-radius:22px;box-shadow:var(--shadow);touch-act
       <article class="howto-card">
         <span class="step">STEP 4</span>
         <h3>4つの出口、全員が入ったらクリア</h3>
-        <p>四すみに自分の色の出口があります。先に入った人は<span class="kw">残りの人の応援役</span>。全員が入ったら、「ありがとう」を言って終わりです。</p>
+        <p>四すみに自分の色の出口があります。先に入った人は<span class="kw">残りの人の応援役</span>。ただし<span class="kw">傾けすぎると出口から出てしまう</span>ので、最後まで気をぬけません。全員が入って1秒たったらクリアです。</p>
       </article>
     </div>
     <div class="row center">
@@ -211,7 +213,7 @@ canvas#board{display:block;border-radius:22px;box-shadow:var(--shadow);touch-act
     </footer>
   </section>
 </div>
-<div class="mock">MOCKUP v0.2</div>
+<div class="mock">MOCKUP v0.3</div>
 
 <script>
 (function(){
@@ -234,7 +236,8 @@ canvas#board{display:block;border-radius:22px;box-shadow:var(--shadow);touch-act
     const g = n => cs.getPropertyValue(n).trim();
     colors = {board:g('--board'), hole:g('--hole'), ballHi:g('--ball-hi'),
       fg:g('--fg'), muted:g('--muted'), line:g('--line'),
-      zone:ZONES.map(z=>g(z.cssVar))};
+      zone:ZONES.map(z=>g(z.cssVar)),
+      wall:[g('--wall-red'), g('--wall-blue'), g('--wall-yellow'), g('--wall-green')]};
   }
   readColors();
   try{ matchMedia('(prefers-color-scheme: dark)').addEventListener('change', readColors); }catch(e){}
@@ -316,15 +319,16 @@ canvas#board{display:block;border-radius:22px;box-shadow:var(--shadow);touch-act
   const canvas = $('#board'), ctx = canvas.getContext('2d'), wrap = $('#boardwrap');
   let S = 300, dpr = 1;
   let maze, balls=[], tilt={x:0,y:0}, target={x:0,y:0}, meter=70, t0=0, elapsed=0;
-  let running=false, phase='play', bannerTimer=null, prevTilt={x:0,y:0}, finishOrder=[], clearAt=0;
+  let running=false, phase='play', bannerTimer=null, prevTilt={x:0,y:0}, finishOrder=[], allInT=0;
   let mode='touch', gyroSeen=false, calib=null, keys={};
   const G=1.9, MAXV=1.3, DAMP=0.7, REST=0.35;
+  const POP=0.6;                      // tilt (0..1) beyond which a ball sitting in its exit rolls back out
 
   function startGame(){
     maze = genMaze();
     balls = maze.starts.map((s,i)=>({x:s.x, y:s.y, vx:0, vy:0, zone:i, state:'roll', fallT:0, inAt:0}));
     tilt={x:0,y:0}; target={x:0,y:0}; prevTilt={x:0,y:0}; keys={};
-    meter=70; elapsed=0; t0=performance.now(); phase='play'; finishOrder=[];
+    meter=70; elapsed=0; t0=performance.now(); phase='play'; finishOrder=[]; allInT=0;
     $('#clear').hidden = true;
     renderChips();
     setMsg('4つのボールは<b>同じ向き</b>に転がる。みんなのボールを見ながら、そっと傾けよう。');
@@ -424,7 +428,6 @@ canvas#board{display:block;border-radius:22px;box-shadow:var(--shadow);touch-act
     if(!running) return;
     const dt = Math.min(0.033, (now-last)/1000 || 0.016); last=now;
     if(phase==='play') step(dt, now);
-    else if(phase==='fall'){ for(const b of balls) if(b.state==='fall') b.fallT+=dt; if(now-clearAt>700){ phase='done'; showClear(); } }
     draw();
     requestAnimationFrame(loop);
   }
@@ -458,22 +461,44 @@ canvas#board{display:block;border-radius:22px;box-shadow:var(--shadow);touch-act
       }
       collideBalls();
     }
-    // goals
+    // goals: a ball over its own exit drops in; a ball resting in the exit rolls back out if the board is tilted too far
+    const tiltMag = Math.hypot(tilt.x, tilt.y);
     for(const b of balls){
-      if(b.state!=='roll') continue;
       const g=maze.goals[b.zone];
-      if(Math.hypot(g.x-b.x, g.y-b.y) < HOLE_R*0.55){
-        b.state='fall'; b.fallT=0; b.vx=0; b.vy=0; b.inAt=elapsed;
-        finishOrder.push(b.zone);
-        setTimeout(()=>{ if(b.state==='fall') b.state='in'; renderChips(); }, 500);
-        const zn=ZONES[b.zone].name, left=balls.filter(x=>x.state==='roll').length;
-        if(left>0){
-          showBanner(b.zone, zn+'さんゴール！ ここからは応援役。残り'+left+'人のために声をかけよう');
-          setMsg('<b>'+zn+'さん</b>は先にゴール。残りの人のボールが見やすいように、<b>傾ける向きを声に出そう</b>。');
+      const zn=ZONES[b.zone].name;
+      if(b.state==='roll'){
+        if(Math.hypot(g.x-b.x, g.y-b.y) < HOLE_R*0.55){
+          b.state='fall'; b.fallT=0; b.vx=0; b.vy=0; b.inAt=elapsed;
+          finishOrder.push(b.zone);
+          const left=balls.filter(x=>x.state==='roll').length;
+          if(left>0){
+            showBanner(b.zone, zn+'さんゴール！ ここからは応援役。残り'+left+'人のために声をかけよう');
+            setMsg('<b>'+zn+'さん</b>は先にゴール。でも<b>傾けすぎるとボールは出口から出てしまう</b>。残りの人のために、そっと。');
+          } else {
+            showBanner(b.zone, zn+'さんもゴール！ そのまま1秒、みんなで水平に保とう');
+          }
+          renderChips();
+        }
+      } else if(b.state==='fall'){
+        b.fallT+=dt;
+        if(b.fallT>0.5){ b.state='in'; renderChips(); }
+      } else if(b.state==='in' && tiltMag>POP){
+        // only when the tilt points back into the board (pressing into the corner keeps the ball in)
+        const dx=tilt.x/tiltMag, dy=tilt.y/tiltMag;
+        const inx=g.x<0.5?1:-1, iny=g.y<0.5?1:-1;
+        if(dx*inx+dy*iny > 0.3){
+          b.state='roll'; b.x=g.x+dx*(HOLE_R+R*0.6); b.y=g.y+dy*(HOLE_R+R*0.6); b.vx=dx*0.35; b.vy=dy*0.35;
+          finishOrder=finishOrder.filter(z=>z!==b.zone);
+          meter-=8; allInT=0;
+          showBanner(b.zone, zn+'さんのボールが出口から飛び出した！ ゴールした人のぶんも、傾けすぎに気をつけよう');
+          setMsg('<b>'+zn+'さん</b>のボールが出てしまった。だれかを急がせると、だれかが困る。<b>ゆっくり</b>戻そう。');
+          renderChips();
         }
       }
     }
-    if(balls.every(b=>b.state!=='roll')){ phase='fall'; clearAt=now; }
+    // clear only when all four rest in their exits for a full second
+    if(balls.every(b=>b.state==='in')){ allInT+=dt; if(allInT>1.0){ phase='done'; showClear(); return; } }
+    else allInT=0;
 
     meter = clamp(meter,0,100);
     $('#meter-fill').style.width = meter.toFixed(0)+'%';
@@ -574,7 +599,7 @@ canvas#board{display:block;border-radius:22px;box-shadow:var(--shadow);touch-act
     ctx.globalAlpha=1;
     // walls
     for(const w of maze.walls){
-      ctx.fillStyle=colors.zone[w.zone];
+      ctx.fillStyle=colors.wall[w.zone];
       rr(w.x*S, w.y*S, w.w*S, w.h*S, WT*S/2); ctx.fill();
     }
     // start plaza marker
@@ -582,16 +607,21 @@ canvas#board{display:block;border-radius:22px;box-shadow:var(--shadow);touch-act
     ctx.beginPath(); ctx.arc(S/2,S/2,CS*S*1.1,0,Math.PI*2); ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha=1;
     // balls
     for(const b of balls){
-      if(b.state==='in') continue;
       const g=maze.goals[b.zone];
       let bx=b.x*S, by=b.y*S, br=R*S;
       if(b.state==='fall'){ const k=clamp(1-b.fallT/0.5,0,1); br*=k; bx=g.x*S+(bx-g.x*S)*k; by=g.y*S+(by-g.y*S)*k; }
-      if(br<=0.5) continue;
+      if(b.state==='in'){
+        // resting in the exit: a small ball visible at the bottom of the hole, nudged by the tilt
+        bx=g.x*S+tilt.x*HOLE_R*S*0.35; by=g.y*S+tilt.y*HOLE_R*S*0.35; br=R*S*0.6;
+        ctx.globalAlpha=0.85;
+      }
+      if(br<=0.5){ ctx.globalAlpha=1; continue; }
       ctx.fillStyle='rgba(0,0,0,0.22)'; ctx.beginPath(); ctx.arc(bx+tilt.x*S*0.012+S*0.004, by+tilt.y*S*0.012+S*0.006, br, 0, Math.PI*2); ctx.fill();
       const grad=ctx.createRadialGradient(bx-br*0.35,by-br*0.35,br*0.05,bx,by,br);
       grad.addColorStop(0,colors.ballHi); grad.addColorStop(0.25,colors.zone[b.zone]); grad.addColorStop(1,colors.zone[b.zone]);
       ctx.fillStyle=grad; ctx.beginPath(); ctx.arc(bx,by,br,0,Math.PI*2); ctx.fill();
       ctx.fillStyle='rgba(0,0,0,0.18)'; ctx.beginPath(); ctx.arc(bx+br*0.25,by+br*0.3,br*0.55,0,Math.PI*2); ctx.fill();
+      ctx.globalAlpha=1;
     }
     // tilt indicator in the centre while playing
     if(phase==='play'){
